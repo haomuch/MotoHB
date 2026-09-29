@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>双电机功率分流混动摩托车动力系统 3D 仿真</title>
+  <!-- 本地精简样式表与本地字体库 (无任何外部 Tailwind CDN 或 Google Fonts 外部网络依赖) -->
+  <link rel="stylesheet" href="style.css">
+  <!-- Three.js 3D 渲染引擎与轨道控制器 (本地优先离线载入，支持多级 CDN 故障转移) -->
+  <script src="lib/three.min.js"></script>
+  <script src="lib/OrbitControls.js"></script>
+</head>
+
+<body class="w-screen h-screen relative bg-slate-950 overflow-hidden">
+
+  <div id="canvas-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+  <!-- Header -->
+  <header
+    class="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 pointer-events-none z-10">
+    <div class="glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-3 pointer-events-auto shadow-xl">
+      <div class="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></div>
+      <h1 class="text-sm md:text-base font-semibold tracking-wide text-slate-100 flex items-center gap-2">
+        <span>双电机功率分流混动摩托车 3D 动力学仿真</span>
+        <span class="text-xs px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-400 border border-sky-500/30">e-CVT</span>
+      </h1>
+    </div>
+
+    <!-- Quick Camera & Mode Presets -->
+    <div class="glass-panel px-3 py-1.5 rounded-2xl flex items-center gap-1 pointer-events-auto shadow-xl">
+      <span class="text-xs text-slate-400 mr-2 font-medium">视角对准:</span>
+      <button id="btn-view-left"
+        class="px-3 py-1.5 text-xs rounded-xl bg-slate-800/80 hover:bg-sky-600/40 text-slate-200 transition font-medium border border-slate-700/50">左侧投影</button>
+      <button id="btn-view-top"
+        class="px-3 py-1.5 text-xs rounded-xl bg-slate-800/80 hover:bg-sky-600/40 text-slate-200 transition font-medium border border-slate-700/50">俯视投影</button>
+      <button id="btn-view-iso"
+        class="px-3 py-1.5 text-xs rounded-xl bg-sky-600/30 text-sky-300 transition font-medium border border-sky-500/40">3D
+        透视</button>
+      <div class="h-4 w-[1px] bg-slate-700 mx-1"></div>
+      <button id="btn-explode"
+        class="px-3 py-1.5 text-xs rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition font-medium border border-amber-500/30">轴向爆炸图</button>
+    </div>
+  </header>
+
+  <!-- Bottom Control Panel: Sliders & Sub-telemetry -->
+  <footer
+    class="absolute bottom-3 sm:bottom-4 left-3 sm:left-4 right-3 sm:right-4 max-w-4xl mx-auto glass-panel p-3 sm:p-4 rounded-2xl sm:rounded-3xl z-10 flex flex-col gap-2.5 sm:gap-3.5 shadow-2xl">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+      <!-- Speed Slider -->
+      <div class="flex flex-col gap-1 sm:gap-1.5">
+        <div class="flex justify-between items-center text-xs">
+          <label for="slider-speed" class="font-medium text-slate-300 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>
+            <span>机车行驶车速 (Vehicle Speed)</span>
+          </label>
+          <div class="font-mono text-xs sm:text-sm font-bold text-sky-400 shrink-0"><span id="lbl-speed">100</span> km/h
+          </div>
+        </div>
+        <input id="slider-speed" type="range" min="0" max="180" value="100" step="1">
+      </div>
+
+      <!-- ICE RPM Slider -->
+      <div class="flex flex-col gap-1 sm:gap-1.5">
+        <div class="flex justify-between items-center text-xs">
+          <label for="slider-ice" class="font-medium text-slate-300 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-indigo-400 shrink-0"></span>
+            <span>发动机转速 (ICE Engine RPM)</span>
+          </label>
+          <div class="font-mono text-xs sm:text-sm font-bold text-indigo-400 shrink-0"><span id="lbl-ice">4000</span>
+            rpm</div>
+        </div>
+        <input id="slider-ice" type="range" min="0" max="8500" value="4000" step="50">
+      </div>
+    </div>
+
+    <!-- MG1 & MG2 Real-Time Telemetry Row (Streamlined, compact inline style) -->
+    <div class="grid grid-cols-2 gap-2">
+      <!-- MG1 Telemetry -->
+      <div
+        class="px-3 py-1.5 rounded-xl bg-slate-900/50 border border-slate-700/40 flex items-center justify-between font-mono">
+        <div class="flex items-center gap-1.5 text-xs text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+          <span class="font-bold">MG1</span>
+        </div>
+        <div class="flex items-baseline gap-1 text-xs sm:text-sm font-bold text-rose-400">
+          <span id="val-mg1-rpm">0</span>
+          <span class="text-[10px] text-slate-400 font-normal">rpm</span>
+        </div>
+      </div>
+
+      <!-- MG2 Telemetry -->
+      <div
+        class="px-3 py-1.5 rounded-xl bg-slate-900/50 border border-slate-700/40 flex items-center justify-between font-mono">
+        <div class="flex items-center gap-1.5 text-xs text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span class="font-bold">MG2</span>
+        </div>
+        <div class="flex items-baseline gap-1 text-xs sm:text-sm font-bold text-amber-400">
+          <span id="val-mg2-rpm">0</span>
+          <span class="text-[10px] text-slate-400 font-normal">rpm</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Inspection Tooltip -->
+  <div id="tooltip"
+    class="absolute z-20 px-3 py-2 rounded-xl glass-panel text-xs text-slate-200 shadow-2xl opacity-0 border border-slate-600/50 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-2">
+    <div id="tooltip-title" class="font-bold text-sky-400 mb-0.5">部件名称</div>
+    <div id="tooltip-desc" class="text-slate-300 text-[11px]">规格与连接关系</div>
+  </div>
+
+  <!-- 业务逻辑与 3D 动力学仿真脚本 (已剥离为独立工程文件) -->
+  <script src="app.js"></script>
+</body>
+
+</html>
