@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>双电机功率分流混动摩托车动力系统 3D 仿真</title>
+  <title>双电机功率分流混动摩托车3D模拟</title>
   <!-- 本地精简样式表与本地字体库 (无任何外部 Tailwind CDN 或 Google Fonts 外部网络依赖) -->
   <link rel="stylesheet" href="style.css">
   <!-- Three.js 3D 渲染引擎与轨道控制器 (本地优先离线载入，支持多级 CDN 故障转移) -->
@@ -22,14 +22,13 @@
     <div class="glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-3 pointer-events-auto shadow-xl">
       <div class="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></div>
       <h1 class="text-sm md:text-base font-semibold tracking-wide text-slate-100 flex items-center gap-2">
-        <span>双电机功率分流混动摩托车 3D 动力学仿真</span>
+        <span>双电机功率分流混动摩托车3D模拟</span>
         <span class="text-xs px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-400 border border-sky-500/30">e-CVT</span>
       </h1>
     </div>
 
     <!-- Quick Camera & Mode Presets -->
     <div class="glass-panel px-3 py-1.5 rounded-2xl flex items-center gap-1 pointer-events-auto shadow-xl">
-      <span class="text-xs text-slate-400 mr-2 font-medium">视角对准:</span>
       <button id="btn-view-left"
         class="px-3 py-1.5 text-xs rounded-xl bg-slate-800/80 hover:bg-sky-600/40 text-slate-200 transition font-medium border border-slate-700/50">左侧投影</button>
       <button id="btn-view-top"
@@ -39,7 +38,7 @@
         透视</button>
       <div class="h-4 w-[1px] bg-slate-700 mx-1"></div>
       <button id="btn-explode"
-        class="px-3 py-1.5 text-xs rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition font-medium border border-amber-500/30">轴向爆炸图</button>
+        class="px-3 py-1.5 text-xs rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition font-medium border border-amber-500/30">爆炸图</button>
     </div>
   </header>
 
