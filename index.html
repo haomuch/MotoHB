@@ -45,26 +45,26 @@
   <!-- Bottom Control Panel: Sliders & Sub-telemetry -->
   <footer
     class="absolute bottom-3 sm:bottom-4 left-3 sm:left-4 right-3 sm:right-4 max-w-4xl mx-auto glass-panel p-3 sm:p-4 rounded-2xl sm:rounded-3xl z-10 flex flex-col gap-2.5 sm:gap-3.5 shadow-2xl">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+    <div class="grid grid-cols-2 gap-3 md:gap-4">
       <!-- Speed Slider -->
-      <div class="flex flex-col gap-1 sm:gap-1.5">
-        <div class="flex justify-between items-center text-xs">
-          <label for="slider-speed" class="font-medium text-slate-300 flex items-center gap-1.5">
+      <div class="flex flex-col gap-1 sm:gap-1.5 min-w-0">
+        <div class="flex justify-between items-center text-xs gap-1.5">
+          <label for="slider-speed" class="font-medium text-slate-300 flex items-center gap-1.5 min-w-0">
             <span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>
-            <span>机车行驶车速 (Vehicle Speed)</span>
+            <span class="truncate">机车行驶车速 (Vehicle Speed)</span>
           </label>
           <div class="font-mono text-xs sm:text-sm font-bold text-sky-400 shrink-0"><span id="lbl-speed">100</span> km/h
           </div>
         </div>
-        <input id="slider-speed" type="range" min="0" max="180" value="100" step="1">
+        <input id="slider-speed" type="range" min="-10" max="180" value="100" step="1">
       </div>
 
       <!-- ICE RPM Slider -->
-      <div class="flex flex-col gap-1 sm:gap-1.5">
-        <div class="flex justify-between items-center text-xs">
-          <label for="slider-ice" class="font-medium text-slate-300 flex items-center gap-1.5">
+      <div class="flex flex-col gap-1 sm:gap-1.5 min-w-0">
+        <div class="flex justify-between items-center text-xs gap-1.5">
+          <label for="slider-ice" class="font-medium text-slate-300 flex items-center gap-1.5 min-w-0">
             <span class="w-2 h-2 rounded-full bg-indigo-400 shrink-0"></span>
-            <span>发动机转速 (ICE Engine RPM)</span>
+            <span class="truncate">发动机转速 (ICE Engine RPM)</span>
           </label>
           <div class="font-mono text-xs sm:text-sm font-bold text-indigo-400 shrink-0"><span id="lbl-ice">4000</span>
             rpm</div>
