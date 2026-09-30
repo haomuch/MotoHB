@@ -489,33 +489,25 @@ function createRollerLinkMesh(isOuter, plateMat, pinMat) {
   plateRight.position.z = -zSpread / 2;
   linkGroup.add(plateRight);
 
-  const roller1 = new THREE.Mesh(sharedChainRollerGeo, pinMat);
-  roller1.position.set(-pitch / 2, 0, 0);
-  linkGroup.add(roller1);
+  // 每个链节仅保留前销轴孔 (-pitch/2) 处的滚子与贯通销轴；
+  // 后销轴孔由相邻下一链节的前铰接构件自然穿接，彻底消除 100% 几何重叠与共面 Z-fighting
+  const roller = new THREE.Mesh(sharedChainRollerGeo, pinMat);
+  roller.position.set(-pitch / 2, 0, 0);
+  linkGroup.add(roller);
 
-  const roller2 = new THREE.Mesh(sharedChainRollerGeo, pinMat);
-  roller2.position.set(pitch / 2, 0, 0);
-  linkGroup.add(roller2);
-
-  const pinGeo = isOuter ? sharedChainPinOuterGeo : sharedChainPinInnerGeo;
-  const pinMesh1 = new THREE.Mesh(pinGeo, pinMat);
-  pinMesh1.position.set(-pitch / 2, 0, 0);
-  linkGroup.add(pinMesh1);
-
-  const pinMesh2 = new THREE.Mesh(pinGeo, pinMat);
-  pinMesh2.position.set(pitch / 2, 0, 0);
-  linkGroup.add(pinMesh2);
+  const pinMesh = new THREE.Mesh(sharedChainPinOuterGeo, pinMat);
+  pinMesh.position.set(-pitch / 2, 0, 0);
+  linkGroup.add(pinMesh);
 
   return linkGroup;
 }
 
 let scene, camera, renderer, controls;
-let assembly, iceGroup, carrierAssembly, ringGearMesh, sunGear, mg1Group, mg2Group, mg2Pinion, sumGear, frontSprocket, wheelGroup, outShaftGroup, chainGroup, rearSprocketMesh;
+let assembly, iceGroup, carrierAssembly, ringGearMesh, sunGear, mg1Group, mg2Group, mg2Pinion, sumGear, frontSprocket, wheelGroup, outShaftGroup, chainGroup, rearSprocketMesh, chainHitProxy;
 let icePrimaryGear;
 const planetMeshes = [];
 const chainLinks = [];
 let numLinks = NUM_CHAIN_LINKS;
-let chainLengthTotal = CHAIN_TARGET_LEN;
 let chainPathGeom = null;
 let currentKine = null;
 
@@ -580,6 +572,56 @@ function computeChainGeometry() {
     xTopStart, yTopStart, xTopEnd, yTopEnd, rotTop,
     xBotStart, yBotStart, xBotEnd, yBotEnd, rotBot
   };
+}
+
+// 创建轻量化链条射线碰撞代理网格 (仅约 380 个低阶三角面，替代遍历 120 组链节、数百个复杂 Extrude 网格)
+function createChainHitProxy(g) {
+  const points = [];
+  const nTangent = 8;
+  for (let i = 0; i <= nTangent; i++) {
+    const t = i / nTangent;
+    points.push(new THREE.Vector3(
+      g.xTopStart + t * (g.xTopEnd - g.xTopStart),
+      g.yTopStart + t * (g.yTopEnd - g.yTopStart),
+      0
+    ));
+  }
+  const nFront = 10;
+  for (let i = 1; i <= nFront; i++) {
+    const t = i / nFront;
+    const ang = g.aTop + t * (Math.PI - 2 * g.alpha);
+    points.push(new THREE.Vector3(
+      g.x1 + Math.cos(ang) * g.r1,
+      g.y1 + Math.sin(ang) * g.r1,
+      0
+    ));
+  }
+  for (let i = 1; i <= nTangent; i++) {
+    const t = i / nTangent;
+    points.push(new THREE.Vector3(
+      g.xBotStart + t * (g.xBotEnd - g.xBotStart),
+      g.yBotStart + t * (g.yBotEnd - g.yBotStart),
+      0
+    ));
+  }
+  const nRear = 14;
+  for (let i = 1; i < nRear; i++) {
+    const t = i / nRear;
+    const ang = g.aBot + t * (Math.PI + 2 * g.alpha);
+    points.push(new THREE.Vector3(
+      g.x2 + Math.cos(ang) * g.r2,
+      g.y2 + Math.sin(ang) * g.r2,
+      0
+    ));
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points, true);
+  const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.45, 6, true);
+  const proxyMat = new THREE.MeshBasicMaterial({
+    colorWrite: false,
+    depthWrite: false
+  });
+  return new THREE.Mesh(tubeGeo, proxyMat);
 }
 
 function initSceneAndModels() {
@@ -656,14 +698,15 @@ function initSceneAndModels() {
     carrier: new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.84, roughness: 0.25 }),
     carrierPlate: new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.86, roughness: 0.22 }),
     sun: new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.85, roughness: 0.25 }),
-    planet: new THREE.MeshStandardMaterial({ color: 0x06b6d4, metalness: 0.85, roughness: 0.25 }),
+    planet: new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.96, roughness: 0.13 }),
     ring: new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.85, roughness: 0.25 }),
     mg1Body: new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.85, roughness: 0.25 }),
     mg2Body: new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.80, roughness: 0.28 }),
     mg2Pinion: new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.86, roughness: 0.24 }),
     sumShaft: new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.92, roughness: 0.20 }),
     steelShaft: new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.95, roughness: 0.14 }),
-    chainOuter: new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.28 }),
+    bearingSteel: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.92, roughness: 0.16 }),
+    chainOuter: new THREE.MeshStandardMaterial({ color: 0xf97316, metalness: 0.85, roughness: 0.28 }),
     chainInner: new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.90, roughness: 0.30 }),
     chainPin: new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.95, roughness: 0.15 }),
     chainSprocket: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.88, roughness: 0.24 }),
@@ -774,13 +817,14 @@ function initSceneAndModels() {
   mg1Group = new THREE.Group();
   mg1Group.position.set(POS_PSD_X, POS_PSD_Y, -1.0);
 
-  const mg1Geo = new THREE.CylinderGeometry(2.70, 2.70, 4.4, 32);
+  // MG1 额定 10kW / 峰值 20kW，作为直径基准: R=2.45，轴向有效长度 4.4
+  const mg1Geo = new THREE.CylinderGeometry(2.45, 2.45, 4.4, 32);
   mg1Geo.rotateX(Math.PI / 2);
   const mg1Housing = new THREE.Mesh(mg1Geo, materials.mg1Body);
   mg1Housing.castShadow = true;
   mg1Group.add(mg1Housing);
 
-  const sharedMg1RibGeo = new THREE.CylinderGeometry(2.78, 2.78, 0.16, 32);
+  const sharedMg1RibGeo = new THREE.CylinderGeometry(2.53, 2.53, 0.16, 32);
   sharedMg1RibGeo.rotateX(Math.PI / 2);
   for (let m = 0; m < 5; m++) {
     const rib = new THREE.Mesh(sharedMg1RibGeo, materials.aluminumMachined);
@@ -788,15 +832,25 @@ function initSceneAndModels() {
     mg1Group.add(rib);
   }
 
-  const mg1ShaftGeo = new THREE.CylinderGeometry(0.52, 0.52, 2.4, 24);
+  // MG1 / 太阳轮贯通轴：贯穿行星架中心轴孔，由齿轮轴孔内的套接轴承支承，左端伸出输入大齿轮端面；
+  // 右端同样穿出电机壳体后端面 0.5，用以接入变速箱壳体支承轴承（轴承本体无需绘制）
+  const mg1ShaftGeo = new THREE.CylinderGeometry(0.52, 0.52, 8.65, 24); // 组内 Z: -2.70 ~ 5.95
   mg1ShaftGeo.rotateX(Math.PI / 2);
   const mg1Shaft = new THREE.Mesh(mg1ShaftGeo, materials.steelShaft);
-  mg1Shaft.position.set(0, 0, 2.4);
+  mg1Shaft.position.set(0, 0, 1.625);
   mg1Group.add(mg1Shaft);
+
+  // 贯通轴前端轴承锁紧螺母
+  const shaftNutGeo = new THREE.CylinderGeometry(0.80, 0.80, 0.30, 6);
+  shaftNutGeo.rotateX(Math.PI / 2);
+  const shaftNut = new THREE.Mesh(shaftNutGeo, materials.steelShaft);
+  shaftNut.position.set(0, 0, 6.05);
+  mg1Group.add(shaftNut);
   assembly.add(mg1Group);
 
   // 太阳轮 (18T, 内部模数 0.09, R=0.81)
-  sunGear = createExternalGearMesh(Z_SUN, R_SUN, 0.88, materials.sun, false, 0);
+  // 太阳轮中心挖空至 R=0.52，正好等于 MG1 电机轴直径 1.04 的一半，轴贯穿其中且端面处严丝合缝
+  sunGear = createExternalGearMesh(Z_SUN, R_SUN, 0.88, materials.sun, true, 0.52);
   sunGear.position.set(POS_PSD_X, POS_PSD_Y, 2.4);
   assembly.add(sunGear);
 
@@ -804,16 +858,30 @@ function initSceneAndModels() {
   carrierAssembly = new THREE.Group();
   carrierAssembly.position.set(POS_PSD_X, POS_PSD_Y, 0);
 
-  // 行星架输入大齿轮 (68T紧凑轴承安装孔，带3组同色系天蓝阳极旋转定位 Marker)
-  const carrierInputGear = createExternalGearMesh(Z_CARRIER_IN, R_CARRIER_IN, 0.85, materials.carrier, true, 0.85, true, 0.24, 2.70, 0x38bdf8, 3);
+  // 行星架输入大齿轮 (68T，轴孔 R=1.07 与轴承外径仅留 0.02 装配间隙，端面处无可见缝隙)
+  const carrierInputGear = createExternalGearMesh(Z_CARRIER_IN, R_CARRIER_IN, 0.85, materials.carrier, true, 1.07, true, 0.24, 2.70, 0x38bdf8, 3);
   carrierInputGear.position.set(0, 0, 4.0);
   carrierAssembly.add(carrierInputGear);
 
-  const carrierBellGeo = new THREE.CylinderGeometry(2.0, 2.0, 0.90, 32, 1, true);
-  carrierBellGeo.rotateX(Math.PI / 2);
-  const carrierBell = new THREE.Mesh(carrierBellGeo, materials.carrier);
-  carrierBell.position.set(0, 0, 3.42);
-  carrierAssembly.add(carrierBell);
+  // 压装于轴孔内的深沟球轴承 (外径适度扩大至 1.05，为标准截面系列；内孔仍套装 R=0.52 贯通轴)
+  const bearingShape = new THREE.Shape();
+  bearingShape.absarc(0, 0, 1.05, 0, Math.PI * 2, false);
+  const bearingBore = new THREE.Path();
+  bearingBore.absarc(0, 0, 0.54, 0, Math.PI * 2, true);
+  bearingShape.holes.push(bearingBore);
+  const carrierBearingGeo = new THREE.ExtrudeGeometry(bearingShape, {
+    depth: 0.84,
+    bevelEnabled: true,
+    bevelSegments: 1,
+    steps: 1,
+    bevelSize: 0.02,
+    bevelThickness: 0.02,
+    curveSegments: 48
+  });
+  carrierBearingGeo.center();
+  const carrierBearing = new THREE.Mesh(carrierBearingGeo, materials.bearingSteel);
+  carrierBearing.position.set(0, 0, 4.0);
+  carrierAssembly.add(carrierBearing);
 
   const carrierSpiderGroup = new THREE.Group();
   carrierSpiderGroup.position.set(0, 0, 2.4);
@@ -890,6 +958,22 @@ function initSceneAndModels() {
   }
 
   carrierAssembly.add(carrierSpiderGroup);
+
+  // 行星架刚性连接三柱：精确位于 3 个行星销轴所在位置 (R=1.62, 0°/120°/240°)，
+  // 柱径 R=0.35 明显大于销轴 R=0.20，可旋入紧固并将输入大齿轮刚性联结至双挡板
+  // 轴向: Z=2.93~3.63，下端嵌入外侧挡板 (前端面 Z=3.04) 内 0.11，上端嵌入输入齿轮背面 (Z=3.555) 内 0.075
+  const sharedStrutGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.70, 24);
+  sharedStrutGeo.rotateX(Math.PI / 2);
+  for (let i = 0; i < 3; i++) {
+    const strutAngle = (i * Math.PI * 2) / 3;
+    const sx = Math.cos(strutAngle) * planetCenterDist;
+    const sy = Math.sin(strutAngle) * planetCenterDist;
+    const strut = new THREE.Mesh(sharedStrutGeo, materials.carrier);
+    strut.position.set(sx, sy, 3.28);
+    strut.castShadow = true;
+    carrierAssembly.add(strut);
+  }
+
   assembly.add(carrierAssembly);
 
   // --- D. 一体化轻量高刚度双齿齿圈 (内齿 54T, 外齿 60T) ---
@@ -901,14 +985,16 @@ function initSceneAndModels() {
   mg2Group = new THREE.Group();
   mg2Group.position.set(POS_MG2_X, POS_MG2_Y, 0);
 
-  const mg2Geo = new THREE.CylinderGeometry(2.95, 2.95, 4.4, 32);
+  // MG2 额定 15kW / 峰值 30kW，功率为 MG1 的 1.5 倍:
+  // 按峰值功率 ∝ 有效铁芯体积 ∝ r²·L (相同磁热负荷与相近峰值转速)，同长度 4.4 下 R = 2.45·√1.5 ≈ 3.00
+  const mg2Geo = new THREE.CylinderGeometry(3.00, 3.00, 4.4, 32);
   mg2Geo.rotateX(Math.PI / 2);
   const mg2Housing = new THREE.Mesh(mg2Geo, materials.mg2Body);
   mg2Housing.position.set(0, 0, -1.0);
   mg2Housing.castShadow = true;
   mg2Group.add(mg2Housing);
 
-  const sharedMg2RibGeo = new THREE.CylinderGeometry(3.03, 3.03, 0.18, 32);
+  const sharedMg2RibGeo = new THREE.CylinderGeometry(3.08, 3.08, 0.18, 32);
   sharedMg2RibGeo.rotateX(Math.PI / 2);
   for (let m = 0; m < 6; m++) {
     const rib = new THREE.Mesh(sharedMg2RibGeo, materials.aluminumMachined);
@@ -916,22 +1002,16 @@ function initSceneAndModels() {
     mg2Group.add(rib);
   }
 
-  const waterPortGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.8, 16);
-  const waterIn = new THREE.Mesh(waterPortGeo, materials.aluminumMachined);
-  waterIn.position.set(0, 3.05, -1.8);
-  mg2Group.add(waterIn);
-  const waterOut = new THREE.Mesh(waterPortGeo, materials.aluminumMachined);
-  waterOut.position.set(0, 3.05, -0.4);
-  mg2Group.add(waterOut);
-
-  const mg2ShaftGeo = new THREE.CylinderGeometry(0.52, 0.52, 2.0, 24);
+  // MG2 贯通轴：左端穿出壳体并经小齿轮驱动副轴；右端同样穿出电机壳体后端面 0.5，
+  // 用以接入变速箱壳体支承轴承（轴承本体无需绘制）
+  const mg2ShaftGeo = new THREE.CylinderGeometry(0.52, 0.52, 6.5, 24); // 组内 Z: -3.70 ~ 2.80
   mg2ShaftGeo.rotateX(Math.PI / 2);
   const mg2Shaft = new THREE.Mesh(mg2ShaftGeo, materials.steelShaft);
-  mg2Shaft.position.set(0, 0, 1.8);
+  mg2Shaft.position.set(0, 0, -0.45);
   mg2Group.add(mg2Shaft);
 
-  // MG2 驱动小齿轮 (22T实心盘面，带3组深青铜/钛金旋转定位 Marker)
-  mg2Pinion = createExternalGearMesh(Z_MG2_PINION, R_MG2, 0.85, materials.mg2Pinion, false, 0, true, 0.10, 0.74, 0x78350f, 3);
+  // MG2 驱动小齿轮 (22T实心盘面，带单组深青铜/钛金旋转定位 Marker)
+  mg2Pinion = createExternalGearMesh(Z_MG2_PINION, R_MG2, 0.85, materials.mg2Pinion, false, 0, true, 0.10, 0.74, 0x78350f, 1);
   mg2Pinion.position.set(0, 0, 2.4);
   mg2Group.add(mg2Pinion);
   assembly.add(mg2Group);
@@ -1049,6 +1129,42 @@ function initSceneAndModels() {
   brakeDisc.position.set(0, 0, -3.4);
   wheelGroup.add(brakeDisc);
 
+  // 刹车盘安装座总成：轮毂(R=1.6) -> 锥形过渡鼓 -> 法兰盘 -> 6 组贯穿螺栓，
+  // 将通风碟盘与轮毂/轮轴做实刚性连接，彻底消除碟盘悬空的中心空洞
+  const discDrumGeo = new THREE.CylinderGeometry(1.62, 2.10, 0.65, 32); // 小端朝 +Z 接轮毂，大端朝 -Z 接法兰
+  discDrumGeo.rotateX(Math.PI / 2);
+  const discDrum = new THREE.Mesh(discDrumGeo, materials.aluminumMachined);
+  discDrum.position.set(0, 0, -2.85); // Z: -3.175 ~ -2.525，覆盖并与轮毂端面(-2.75)接实
+  discDrum.castShadow = true;
+  wheelGroup.add(discDrum);
+
+  const discFlangeGeo = new THREE.CylinderGeometry(2.35, 2.35, 0.16, 32);
+  discFlangeGeo.rotateX(Math.PI / 2);
+  const discFlange = new THREE.Mesh(discFlangeGeo, materials.aluminumMachined);
+  discFlange.position.set(0, 0, -3.27); // Z: -3.35 ~ -3.19，紧贴并微压入碟盘内侧面(-3.29)
+  discFlange.castShadow = true;
+  wheelGroup.add(discFlange);
+
+  // 6 组法兰螺栓：贯穿法兰盘与碟盘内圈，头部凸出于碟盘外端面(-3.51)，形成可见的紧固连接
+  const discBoltGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.44, 16);
+  discBoltGeo.rotateX(Math.PI / 2);
+  const discBoltHeadGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.07, 6);
+  discBoltHeadGeo.rotateX(Math.PI / 2);
+  const discBoltRadius = 2.28; // 落在碟盘实体环面 2.016~2.508 之间，避开通风孔
+  for (let b = 0; b < 6; b++) {
+    const boltAng = (b * Math.PI * 2) / 6;
+    const bx = Math.cos(boltAng) * discBoltRadius;
+    const by = Math.sin(boltAng) * discBoltRadius;
+
+    const bolt = new THREE.Mesh(discBoltGeo, materials.steelShaft);
+    bolt.position.set(bx, by, -3.38); // Z: -3.60 ~ -3.16
+    wheelGroup.add(bolt);
+
+    const boltHead = new THREE.Mesh(discBoltHeadGeo, materials.steelShaft);
+    boltHead.position.set(bx, by, -3.605); // Z: -3.64 ~ -3.57
+    wheelGroup.add(boltHead);
+  }
+
   const rearAxleGeo = new THREE.CylinderGeometry(0.55, 0.55, 12.8, 24);
   rearAxleGeo.rotateX(Math.PI / 2);
   const rearAxle = new THREE.Mesh(rearAxleGeo, materials.steelShaft);
@@ -1098,7 +1214,6 @@ function initSceneAndModels() {
 
   // --- I. 真实 520 滚子链条 (严格 120 节闭环张紧，零累积误差) ---
   chainPathGeom = computeChainGeometry();
-  chainLengthTotal = chainPathGeom.totalLen;
   numLinks = NUM_CHAIN_LINKS;
 
   chainGroup = new THREE.Group();
@@ -1110,6 +1225,11 @@ function initSceneAndModels() {
     chainGroup.add(link);
     chainLinks.push(link);
   }
+
+  // 轻量化高响应度射线检测代理 (仅约 380 个低阶三角面，代替对 120 组链节、数百个 Extrude 齿形零件的深度递归遍历)
+  chainHitProxy = createChainHitProxy(chainPathGeom);
+  chainGroup.add(chainHitProxy);
+
   assembly.add(chainGroup);
 
   // --- 全套齿轮解析相位精密对齐 ---
@@ -1197,7 +1317,7 @@ function initSceneAndModels() {
     { mesh: mg2Pinion, title: "MG2 驱动齿轮 (22T)", desc: "22T (m=0.10)，减速比 2.73 驱动副轴" },
     { mesh: sumGear, title: "副轴汇总大齿轮 (60T)", desc: "60T (m=0.10)，汇聚齿圈与 MG2 动力" },
     { mesh: frontSprocket, title: "终传小链轮 (12T)", desc: "12T，与后链盘构成 3.67 终传比" },
-    { mesh: chainGroup, title: "520 滚子链条 (120节)", desc: "标准 520 规格，传递终传动力" },
+    { mesh: chainHitProxy, title: "520 滚子链条 (120节)", desc: "标准 520 规格，传递终传动力" },
     { mesh: rearSprocketMesh, title: "后轮终传大链盘 (44T)", desc: "44T，终传比 3.67，驱动后轮" },
     { mesh: rearAxle, title: "后轮穿心轴", desc: "高强度合金轴，刚性支承后轮" },
     { mesh: wheelGroup, title: "160/60-R17 后轮总成", desc: "17寸铝合金轮辋与跑车宽胎" },
@@ -1340,8 +1460,18 @@ function setupInteractions() {
   tooltipDesc = document.getElementById('tooltip-desc');
   cachedHitCandidates = interactiveMeshes.map(item => item.mesh);
 
+  function hideTooltip() {
+    if (tooltip) tooltip.style.opacity = '0';
+    raycastPending = false;
+  }
+
   // 节流鼠标与指针移动，将射线计算转移到渲染帧中
   function onPointerMove(e) {
+    // 触屏滑动调整视角或多点触控时忽略射线拾取，避免 Tooltip 遮挡闪烁
+    if (e.pointerType === 'touch') {
+      hideTooltip();
+      return;
+    }
     cachedMouseX = e.clientX;
     cachedMouseY = e.clientY;
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -1350,6 +1480,11 @@ function setupInteractions() {
   }
 
   window.addEventListener('pointermove', onPointerMove, { passive: true });
+  window.addEventListener('pointerleave', hideTooltip);
+  window.addEventListener('blur', hideTooltip);
+  if (controls) {
+    controls.addEventListener('start', hideTooltip);
+  }
 
   const speedSlider = document.getElementById('slider-speed');
   const iceSlider = document.getElementById('slider-ice');
@@ -1434,6 +1569,24 @@ function moveCameraTo(pos, target) {
 }
 
 // 根据屏幕宽度与宽高比自动等比自适应缩放整个 3D 动力学模型视图
+let prevBaseScale = null;
+
+function calculateBaseScale(w, h) {
+  const aspect = w / h;
+  const BASE_WIDTH = 1440;
+  let scale = 1.0;
+  if (w < BASE_WIDTH) {
+    scale = Math.pow(w / BASE_WIDTH, 0.72);
+  } else {
+    scale = Math.min(1.15, 1.0 + (w - BASE_WIDTH) * 0.0001);
+  }
+  if (aspect < 1.45) {
+    const aspectFactor = Math.max(0.65, aspect / 1.45);
+    scale *= aspectFactor;
+  }
+  return Math.max(0.38, Math.min(1.18, scale));
+}
+
 function updateResponsiveScale() {
   if (!camera) return;
   const container = document.getElementById('canvas-container');
@@ -1441,34 +1594,24 @@ function updateResponsiveScale() {
   const h = container ? (container.clientHeight || window.innerHeight) : window.innerHeight;
   const aspect = w / h;
 
-  // 基准视口参考设计尺寸：宽度 1440px
-  const BASE_WIDTH = 1440;
+  const newBaseScale = calculateBaseScale(w, h);
 
-  // 1. 基于视口宽度的连续幂律自适应缩放
-  let scale = 1.0;
-  if (w < BASE_WIDTH) {
-    // 宽度渐小时平滑收敛，如 1200px 约 0.90，1024px 约 0.81，768px 约 0.68，480px 约 0.52
-    scale = Math.pow(w / BASE_WIDTH, 0.72);
+  if (prevBaseScale === null) {
+    // 首次载入初始化基准缩放
+    camera.zoom = newBaseScale;
+    prevBaseScale = newBaseScale;
   } else {
-    // 大屏宽屏时适度饱满微增
-    scale = Math.min(1.15, 1.0 + (w - BASE_WIDTH) * 0.0001);
+    // 视口尺寸变化时按基准比例缩放，完整保留用户交互中通过鼠标滚轮自定义的缩放倍率
+    const scaleRatio = newBaseScale / prevBaseScale;
+    camera.zoom *= scaleRatio;
+    prevBaseScale = newBaseScale;
   }
-
-  // 2. 窄屏/竖屏宽高比补偿 (当宽高比小于 1.45 时，模型横向跨度较大，额外收缩以防左右出界)
-  if (aspect < 1.45) {
-    const aspectFactor = Math.max(0.65, aspect / 1.45);
-    scale *= aspectFactor;
-  }
-
-  // 夹紧在安全展示区间 [0.38, 1.18]
-  scale = Math.max(0.38, Math.min(1.18, scale));
 
   camera.aspect = aspect;
-  camera.zoom = scale;
   camera.updateProjectionMatrix();
 
   if (controls) {
-    controls.zoom0 = scale;
+    controls.zoom0 = camera.zoom;
   }
 }
 
