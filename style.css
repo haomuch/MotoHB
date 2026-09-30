@@ -245,6 +245,10 @@ button {
   .md\:text-base { font-size: 1rem; line-height: 1.5rem; }
 }
 
+@media (orientation: landscape) {
+  .landscape\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* 定制控件与提示条 */
 input[type=range] {
   appearance: none;
