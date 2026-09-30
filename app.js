@@ -118,6 +118,7 @@ const initialPhase = {
   ring: 0,
   sumShaft: 0,
   mg2: 0,
+  rearSprocket: 0,
   planets: [0, 0, 0]
 };
 
@@ -803,19 +804,21 @@ function initSceneAndModels() {
   carrierAssembly = new THREE.Group();
   carrierAssembly.position.set(POS_PSD_X, POS_PSD_Y, 0);
 
-  // 行星架输入大齿轮 (68T实心盘面带内孔，带3组同色系天蓝阳极旋转定位 Marker，与3行星轮星形对称)
-  const carrierInputGear = createExternalGearMesh(Z_CARRIER_IN, R_CARRIER_IN, 0.85, materials.carrier, true, 2.0, true, 0.24, 2.95, 0x38bdf8, 3);
+  // 行星架输入大齿轮 (68T紧凑轴承安装孔，带3组同色系天蓝阳极旋转定位 Marker)
+  const carrierInputGear = createExternalGearMesh(Z_CARRIER_IN, R_CARRIER_IN, 0.85, materials.carrier, true, 0.85, true, 0.24, 2.70, 0x38bdf8, 3);
   carrierInputGear.position.set(0, 0, 4.0);
   carrierAssembly.add(carrierInputGear);
 
-  const carrierBellGeo = new THREE.CylinderGeometry(1.9, 1.9, 1.25, 32, 1, true);
+  const carrierBellGeo = new THREE.CylinderGeometry(2.0, 2.0, 0.90, 32, 1, true);
   carrierBellGeo.rotateX(Math.PI / 2);
   const carrierBell = new THREE.Mesh(carrierBellGeo, materials.carrier);
-  carrierBell.position.set(0, 0, 3.38);
+  carrierBell.position.set(0, 0, 3.42);
   carrierAssembly.add(carrierBell);
 
   const carrierSpiderGroup = new THREE.Group();
   carrierSpiderGroup.position.set(0, 0, 2.4);
+
+  const planetCenterDist = R_SUN + R_PLANET; // 0.81 + 0.81 = 1.62
 
   const flangeShape = new THREE.Shape();
   flangeShape.absarc(0, 0, 2.3, 0, Math.PI * 2, false);
@@ -823,8 +826,18 @@ function initSceneAndModels() {
   flangeHole.absarc(0, 0, 1.05, 0, Math.PI * 2, true);
   flangeShape.holes.push(flangeHole);
 
+  // 挡板开设 3 个行星销轴安装通孔，销轴贯穿显露
+  for (let i = 0; i < 3; i++) {
+    const pinAngle = (i * Math.PI * 2) / 3;
+    const px = Math.cos(pinAngle) * planetCenterDist;
+    const py = Math.sin(pinAngle) * planetCenterDist;
+    const pinHole = new THREE.Path();
+    pinHole.absarc(px, py, 0.21, 0, Math.PI * 2, true);
+    flangeShape.holes.push(pinHole);
+  }
+
   const sharedFlangeGeo = new THREE.ExtrudeGeometry(flangeShape, {
-    depth: 0.16,
+    depth: 0.14,
     bevelEnabled: true,
     bevelSegments: 1,
     steps: 1,
@@ -833,27 +846,44 @@ function initSceneAndModels() {
   });
   sharedFlangeGeo.center();
 
+  // 适当加大挡板间距 (Z=±0.55, 内侧净间距 0.96)，避免紧夹厚度 0.78 的行星齿轮造成干涉
   const outerFlange = new THREE.Mesh(sharedFlangeGeo, materials.carrierPlate);
-  outerFlange.position.set(0, 0, 0.44);
+  outerFlange.position.set(0, 0, 0.55);
   carrierSpiderGroup.add(outerFlange);
 
   const innerFlange = new THREE.Mesh(sharedFlangeGeo, materials.carrierPlate);
-  innerFlange.position.set(0, 0, -0.44);
+  innerFlange.position.set(0, 0, -0.55);
   carrierSpiderGroup.add(innerFlange);
 
-  const planetCenterDist = R_SUN + R_PLANET; // 0.81 + 0.81 = 1.62
+  const pinGeo = new THREE.CylinderGeometry(0.20, 0.20, 1.36, 24);
+  pinGeo.rotateX(Math.PI / 2);
+
+  // 销轴端盖/轴承限位凸缘几何体 (凸显于挡板外表面)
+  const pinCapGeo = new THREE.CylinderGeometry(0.27, 0.27, 0.06, 24);
+  pinCapGeo.rotateX(Math.PI / 2);
+
   for (let i = 0; i < 3; i++) {
     const pinAngle = (i * Math.PI * 2) / 3;
     const px = Math.cos(pinAngle) * planetCenterDist;
     const py = Math.sin(pinAngle) * planetCenterDist;
 
-    const pinGeo = new THREE.CylinderGeometry(0.20, 0.20, 1.05, 16);
-    pinGeo.rotateX(Math.PI / 2);
+    // 贯穿行星齿轮与内外双挡板的实心销轴
     const pin = new THREE.Mesh(pinGeo, materials.steelShaft);
     pin.position.set(px, py, 0);
     carrierSpiderGroup.add(pin);
 
-    const planetMesh = createExternalGearMesh(Z_PLANET, R_PLANET, 0.82, materials.planet, false, 0);
+    // 外侧挡板凸显的销轴端盖
+    const capOuter = new THREE.Mesh(pinCapGeo, materials.steelShaft);
+    capOuter.position.set(px, py, 0.63);
+    carrierSpiderGroup.add(capOuter);
+
+    // 内侧挡板凸显的销轴端盖
+    const capInner = new THREE.Mesh(pinCapGeo, materials.steelShaft);
+    capInner.position.set(px, py, -0.63);
+    carrierSpiderGroup.add(capInner);
+
+    // 行星齿轮 (厚度适度收放至 0.78，与双挡板内侧保持舒适空隙，彻底消除挤夹干涉)
+    const planetMesh = createExternalGearMesh(Z_PLANET, R_PLANET, 0.78, materials.planet, false, 0);
     planetMesh.position.set(px, py, 0);
     carrierSpiderGroup.add(planetMesh);
     planetMeshes.push({ mesh: planetMesh, index: i, angleOffset: pinAngle });
@@ -1149,9 +1179,7 @@ function initSceneAndModels() {
   if (angleDiff < 0) angleDiff += stepFront;
   const phaseAlignOffset = angleDiff * R_FRONT_SPROCKET;
 
-  const phaseAtRear = (s_rear_entry + phaseAlignOffset) % CHAIN_PITCH;
-  const rearEntryToothAngle = phaseAtRear / R_REAR_SPROCKET;
-  initialPhase.rearSprocket = (chainPathGeom.aBot - rearEntryToothAngle) - 0.34 * step_rear;
+  initialPhase.rearSprocket = chainPathGeom.aBot + (phaseAlignOffset - s_rear_entry) / R_REAR_SPROCKET - 0.34 * step_rear;
   if (rearSprocketMesh) {
     rearSprocketMesh.rotation.z = initialPhase.rearSprocket;
   }
