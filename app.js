@@ -1328,11 +1328,13 @@ function initSceneAndModels() {
   });
 
   // 爆炸图设置（行星排与电机各层分解展示，链轮与链条保持位置不动）
+  // 太阳轮与 MG1 电机为同轴刚性直连，分解位移必须完全一致，始终保持套在 MG1 电机轴上
+  const EXPLODE_MG1_DELTA = -10;
   partsToExplode.push(
     { group: carrierAssembly, axis: 'z', delta: 12 },
     { group: ringGearMesh, axis: 'z', delta: 6 },
-    { group: mg1Group, axis: 'z', delta: -10 },
-    { group: sunGear, axis: 'z', delta: -6 },
+    { group: mg1Group, axis: 'z', delta: EXPLODE_MG1_DELTA },
+    { group: sunGear, axis: 'z', delta: EXPLODE_MG1_DELTA },
     { group: mg2Group, axis: 'y', delta: 6 }
   );
   partsToExplode.forEach(item => {
